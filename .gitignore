@@ -1,0 +1,144 @@
+# ==========================================
+# SECURITY: Sensitive Files
+# ==========================================
+
+# Environment variables with real credentials
+.env
+.env.local
+.env.production
+*.env
+!.env.example
+
+# User Data scripts with real API keys
+aws/ec2_user_data.sh
+*_user_data.sh
+!aws/ec2_user_data.template.sh
+
+# AWS credentials and keys
+.aws/
+*.pem
+*.ppk
+credentials.txt
+config.txt
+
+# ==========================================
+# Python
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+venv.bak/
+
+# ==========================================
+# Data Files
+# ==========================================
+*.csv
+*.json
+*.parquet
+*.xlsx
+*.xls
+data/
+raw/
+processed/
+*.db
+*.sqlite
+
+# ==========================================
+# IDE & Editors
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.vscode/settings.json
+
+# ==========================================
+# Jupyter Notebooks
+# ==========================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+*.out
+*.err
+
+# ==========================================
+# Testing
+# ==========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+.pytest_cache/
+
+# ==========================================
+# ML Models
+# ==========================================
+models/*.pkl
+models/*.h5
+models/*.joblib
+models/*.pt
+models/*.pth
+*.model
+
+# ==========================================
+# OS Files
+# ==========================================
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ==========================================
+# Temporary Files
+# ==========================================
+*.tmp
+*.bak
+*.swp
+*~
+.cache/
+
+# ==========================================
+# Docker
+# ==========================================
+docker-compose.override.yml
+.dockerignore
+
+# ==========================================
+# Local Configuration (DO NOT PUSH)
+# ==========================================
+config_local.yaml
+secrets.yaml
+local_settings.py

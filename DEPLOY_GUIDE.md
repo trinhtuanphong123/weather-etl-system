@@ -1,77 +1,128 @@
-# 🚀 Hướng dẫn Triển khai Weather ETL System
+# 🚀 Weather ETL System - Deployment Guide
 
-## 📋 Checklist chuẩn bị
+## 📋 Quy trình triển khai
 
-- [ ] Tài khoản AWS
-- [ ] Visual Crossing API Key (free tier: https://www.visualcrossing.com/weather-api)
-- [ ] GitHub account
-- [ ] AWS CLI đã cài đặt (optional)
+```
+┌─────────────────────────────────────────────────────────┐
+│  PHASE 1: GitHub Setup (15 phút)                       │
+│  → Push code lên GitHub                                 │
+│  → Kiểm tra CI/CD pass                                  │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│  PHASE 2: AWS Setup (30 phút)                          │
+│  → Tạo S3 Bucket                                        │
+│  → Tạo IAM Roles                                        │
+│  → Launch EC2                                           │
+│  → Tạo Lambda Functions                                 │
+│  → Setup EventBridge Schedule                           │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│  PHASE 3: Testing (10 phút)                            │
+│  → Test thủ công                                        │
+│  → Kiểm tra S3 data                                     │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Bước 1: Tạo GitHub Repository
+## PHASE 1: GitHub Setup (Code Repository)
 
-### 1.1. Tạo repo mới trên GitHub
+### Bước 1.1: Chuẩn bị Repository
 
 ```bash
-# Tạo repo tên: weather-etl-system
+# Tạo repository mới trên GitHub
+# Tên: weather-etl-system
 # Visibility: Public hoặc Private
-```
 
-### 1.2. Clone và push code
-
-```bash
-# Clone repo
+# Clone về máy
 git clone https://github.com/YOUR_USERNAME/weather-etl-system.git
 cd weather-etl-system
+```
 
-# Copy tất cả files từ artifacts vào thư mục này
-# - app.py
-# - requirements.txt
-# - Dockerfile
-# - .gitignore
-# - .env.example
-# - test_app.py
-# - README.md
-# - .github/workflows/ci-test.yaml
+### Bước 1.2: Copy các files vào repository
 
-# Push code
+**Cấu trúc cần tạo:**
+
+```
+weather-etl-system/
+├── .github/workflows/ci-test.yml
+├── aws/
+│   ├── ec2_user_data.template.sh
+│   ├── lambda_start_ec2.py
+│   └── lambda_stop_ec2.py
+├── app.py
+├── requirements.txt
+├── Dockerfile
+├── test_app.py
+├── .gitignore
+├── .env.example
+└── README.md
+```
+
+### Bước 1.3: Push lên GitHub
+
+```bash
 git add .
 git commit -m "Initial commit: Weather ETL System"
 git push origin main
 ```
 
-### 1.3. Kiểm tra GitHub Actions
+### Bước 1.4: Kiểm tra GitHub Actions
 
-- Vào tab **Actions** trên GitHub
-- Kiểm tra CI pipeline có chạy và pass không
-- Nếu PASS → Tiếp tục bước 2
+1. Vào repository trên GitHub
+2. Click tab **Actions**
+3. Xem workflow "CI Pipeline - Weather ETL"
+4. **Đợi cho đến khi thấy ✅ (Pass)**
+
+**Nếu PASS:**
+- ✅ Code không có lỗi
+- ✅ Tests pass
+- ✅ Docker build thành công
+- ✅ Sẵn sàng deploy lên AWS
+
+**Nếu FAIL:**
+- ❌ Xem logs để fix lỗi
+- ❌ Commit và push lại
 
 ---
 
-## Bước 2: Tạo S3 Bucket
+## PHASE 2: AWS Setup
 
-### 2.1. Tạo bucket qua AWS Console
+### Bước 2.1: Lấy API Key
 
-1. **Vào S3 Console** → Click **"Create bucket"**
+**Visual Crossing Weather API:**
 
-2. **Cấu hình:**
-   ```
-   Bucket name: weather-data-bucket-YOUR_NAME
-   Region: Asia Pacific (Singapore) ap-southeast-1
-   
-   Block Public Access: ✓ Block all public access
-   
-   Versioning: Disabled (hoặc Enable nếu muốn)
-   
-   Encryption: Enable (Server-side encryption với S3 managed keys)
-   ```
+1. Truy cập: https://www.visualcrossing.com/weather-api
+2. Sign up (miễn phí)
+3. Copy API key (dạng: `pk.abc123xyz456...`)
+4. **Lưu lại để dùng sau**
 
-3. **Create bucket**
+---
 
-### 2.2. Tạo folder structure
+### Bước 2.2: Tạo S3 Bucket
 
-Vào bucket vừa tạo → **Create folder**:
+**AWS Console → S3 → Create bucket:**
+
+```yaml
+Bucket name: weather-data-bucket-YOUR_NAME
+  (VD: weather-data-bucket-john)
+  
+Region: Asia Pacific (Singapore) ap-southeast-1
+
+Block Public Access: ✓ Block all public access
+
+Bucket Versioning: Disabled
+
+Encryption: Enable (SSE-S3)
+```
+
+**Click "Create bucket"**
+
+**Tạo folder structure:**
+
+Vào bucket vừa tạo → **Create folder** → Tạo 4 folders:
 
 ```
 - raw/weather/
@@ -80,344 +131,364 @@ Vào bucket vừa tạo → **Create folder**:
 - models/
 ```
 
-### 2.3. Lưu bucket name
-
-```
-Bucket name: weather-data-bucket-YOUR_NAME
-```
+**✅ Lưu lại:** `weather-data-bucket-YOUR_NAME`
 
 ---
 
-## Bước 3: Tạo IAM Roles
+### Bước 2.3: Tạo IAM Roles
 
-### 3.1. Role cho EC2
+#### **Role 1: EC2-Weather-ETL-Role**
 
-1. **IAM Console** → **Roles** → **Create role**
+**IAM Console → Roles → Create role:**
 
-2. **Trusted entity type:** AWS service
+```yaml
+Trusted entity type: AWS service
+Use case: EC2
+```
 
-3. **Use case:** EC2
+**Click "Next"**
 
-4. **Permissions policies:**
-   - ✓ `AmazonS3FullAccess`
-   - ✓ `CloudWatchAgentServerPolicy`
+**Attach policies:**
+- ✓ `AmazonS3FullAccess`
+- ✓ `CloudWatchAgentServerPolicy`
 
-5. **Role name:** `EC2-Weather-ETL-Role`
+**Click "Next"**
 
-6. **Create role**
+```yaml
+Role name: EC2-Weather-ETL-Role
+Description: Role for EC2 to access S3 and CloudWatch
+```
 
-### 3.2. Role cho Lambda
+**Click "Create role"**
 
-1. **Create role** → **AWS service** → **Lambda**
+#### **Role 2: Lambda-EC2-Control-Role**
 
-2. **Permissions policies:**
-   - ✓ `AmazonEC2FullAccess`
-   - ✓ `CloudWatchLogsFullAccess`
+**Create role:**
 
-3. **Role name:** `Lambda-EC2-Control-Role`
+```yaml
+Trusted entity type: AWS service
+Use case: Lambda
+```
 
-4. **Create role**
+**Attach policies:**
+- ✓ `AmazonEC2FullAccess`
+- ✓ `CloudWatchLogsFullAccess`
+
+```yaml
+Role name: Lambda-EC2-Control-Role
+Description: Role for Lambda to start/stop EC2
+```
+
+**Click "Create role"**
 
 ---
 
-## Bước 4: Launch EC2 Instance
+### Bước 2.4: Launch EC2 Instance
 
-### 4.1. EC2 Console → Launch Instance
+**EC2 Console → Launch Instance:**
 
-**Basic settings:**
-```
+#### **Step 1: Name and OS**
+
+```yaml
 Name: weather-etl-instance
-AMI: Ubuntu Server 22.04 LTS
+Application and OS Images (AMI): Ubuntu Server 22.04 LTS
 Architecture: 64-bit (x86)
-Instance type: t2.micro (free tier) hoặc t3.small
 ```
 
-**Key pair:**
-```
-Create new key pair
-Name: weather-etl-key
-Type: RSA
-Format: .pem
-→ Download và lưu file
+#### **Step 2: Instance type**
+
+```yaml
+Instance type: t2.micro (Free tier) hoặc t3.small
 ```
 
-**Network settings:**
+#### **Step 3: Key pair**
+
+```yaml
+Create new key pair:
+  Name: weather-etl-key
+  Type: RSA
+  Format: .pem
 ```
-Create security group
-Name: weather-etl-sg
+
+**→ Download file `weather-etl-key.pem` và lưu an toàn**
+
+```bash
+# Trên máy local, set quyền cho key
+chmod 400 weather-etl-key.pem
+```
+
+#### **Step 4: Network settings**
+
+**Create security group:**
+
+```yaml
+Security group name: weather-etl-sg
 
 Inbound rules:
-- Type: SSH, Port: 22, Source: My IP
-- Type: HTTP, Port: 80, Source: 0.0.0.0/0
+  Rule 1:
+    Type: SSH
+    Port: 22
+    Source: My IP
+  
+  Rule 2:
+    Type: HTTP
+    Port: 80
+    Source: 0.0.0.0/0 (Anywhere)
 ```
 
-**Configure storage:**
-```
+#### **Step 5: Storage**
+
+```yaml
 Size: 8-20 GB
-Type: gp3
+Volume type: gp3
 ```
 
-**Advanced details:**
+#### **Step 6: Advanced details**
 
 **IAM instance profile:**
-```
+```yaml
 Select: EC2-Weather-ETL-Role
 ```
 
 **User data:**
 
+1. Mở file `aws/ec2_user_data.template.sh` từ GitHub repo
+2. Copy toàn bộ nội dung
+3. **THAY THẾ 3 giá trị:**
+
 ```bash
-#!/bin/bash
-exec > >(tee /var/log/user-data.log)
-exec 2>&1
+# Line ~48: Thay GitHub username
+GITHUB_USERNAME="john_doe"  # ← Thay YOUR_USERNAME
 
-echo "=== Weather ETL Deployment Started at $(date) ==="
-
-# Update system
-apt update -y
-
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-systemctl start docker
-systemctl enable docker
-usermod -aG docker ubuntu
-
-# Install Git and AWS CLI
-apt install -y git awscli
-
-# Clone repository
-cd /home/ubuntu
-sudo -u ubuntu git clone https://github.com/YOUR_USERNAME/weather-etl-system.git app
-cd app
-
-# Create .env file
-cat > .env << 'EOF'
-WEATHER_API_KEY=YOUR_VISUAL_CROSSING_API_KEY_HERE
-S3_BUCKET_NAME=weather-data-bucket-YOUR_NAME
-AWS_REGION=ap-southeast-1
-EOF
-
-chown ubuntu:ubuntu .env
-
-# Build and run Docker
-docker build -t weather-app .
-docker run -d -p 80:8501 --name weather-app --env-file .env weather-app
-
-echo "=== Deployment Completed at $(date) ==="
-docker ps
+# Line ~84-85: Thay API key và bucket name
+WEATHER_API_KEY=pk.abc123xyz456...  # ← Thay YOUR_VISUAL_CROSSING_API_KEY
+S3_BUCKET_NAME=weather-data-bucket-john  # ← Thay YOUR_S3_BUCKET_NAME
 ```
 
-**⚠️ QUAN TRỌNG:** Thay thế:
-- `YOUR_USERNAME` → GitHub username của bạn
-- `YOUR_VISUAL_CROSSING_API_KEY_HERE` → API key thật
-- `weather-data-bucket-YOUR_NAME` → Tên S3 bucket của bạn
+4. Paste vào ô **User data**
 
-### 4.2. Launch instance
+#### **Step 7: Launch**
 
-- Click **"Launch instance"**
-- Đợi ~2-3 phút để instance khởi động
+**Click "Launch instance"**
 
-### 4.3. Lấy thông tin instance
+**Đợi ~3-5 phút** để instance khởi động
 
-```
-Instance ID: i-0xxxxxxxxxxxxx (lưu lại cho Lambda)
-Public IPv4: xx.xx.xx.xx (để truy cập web)
+#### **Step 8: Lấy thông tin Instance**
+
+```yaml
+Instance ID: i-0abc123def456789  # ← LƯU LẠI cho Lambda
+Public IPv4: 54.123.45.67        # ← Để truy cập web
 ```
 
-### 4.4. Kiểm tra deployment
+#### **Step 9: Kiểm tra deployment**
 
-**SSH vào EC2:**
+**Option A: SSH vào EC2**
+
 ```bash
-chmod 400 weather-etl-key.pem
-ssh -i weather-etl-key.pem ubuntu@[PUBLIC_IP]
+ssh -i weather-etl-key.pem ubuntu@54.123.45.67
 
-# Xem logs
+# Xem logs deployment
 sudo tail -f /var/log/user-data.log
 
-# Xem Docker
+# Kiểm tra Docker
 sudo docker ps
+
+# Xem logs app
 sudo docker logs weather-app
 ```
 
-**Truy cập web:**
+**Option B: Truy cập web**
+
 ```
-http://[PUBLIC_IP]
+http://54.123.45.67
 ```
 
-Bạn sẽ thấy giao diện Weather Data Collection System!
+Bạn sẽ thấy: **"🌤️ Weather Data Collection System"**
+
+**✅ Nếu thấy web → EC2 deployment thành công!**
 
 ---
 
-## Bước 5: Tạo Lambda Functions
+### Bước 2.5: Tạo Lambda Functions
 
-### 5.1. Lambda START EC2
+#### **Lambda 1: Start EC2**
 
-1. **Lambda Console** → **Create function**
+**Lambda Console → Create function:**
 
-2. **Cấu hình:**
-   ```
-   Function name: StartWeatherEC2
-   Runtime: Python 3.12
-   Architecture: x86_64
-   Execution role: Use existing role → Lambda-EC2-Control-Role
-   ```
-
-3. **Create function**
-
-4. **Code:** Copy code từ artifact `lambda_start_ec2.py`
-
-5. **Deploy**
-
-6. **Configuration → Environment variables:**
-   ```
-   Key: INSTANCE_ID
-   Value: i-0xxxxxxxxxxxxx (Instance ID của bạn)
-   ```
-
-7. **Configuration → General configuration:**
-   ```
-   Timeout: 30 seconds
-   ```
-
-8. **Test:**
-   - Tab Test → Configure test event
-   - Event name: TestStart
-   - Click Test
-   - Xem EC2 có start không
-
-### 5.2. Lambda STOP EC2
-
-**Làm tương tự như Lambda START:**
-
-```
-Function name: StopWeatherEC2
+```yaml
+Function name: StartWeatherEC2
 Runtime: Python 3.12
-Role: Lambda-EC2-Control-Role
-Code: Copy từ lambda_stop_ec2.py
-Environment variable: INSTANCE_ID = i-0xxxxx
+Architecture: x86_64
+Execution role: Use an existing role
+  → Select: Lambda-EC2-Control-Role
+```
+
+**Click "Create function"**
+
+**Code:**
+
+1. Mở file `aws/lambda_start_ec2.py` từ GitHub
+2. Copy toàn bộ code
+3. Paste vào Lambda code editor
+4. **Click "Deploy"**
+
+**Configuration → Environment variables:**
+
+```yaml
+Key: INSTANCE_ID
+Value: i-0abc123def456789  # ← Instance ID từ bước 2.4
+```
+
+**Configuration → General configuration → Edit:**
+
+```yaml
 Timeout: 30 seconds
 ```
 
+**Click "Save"**
+
 **Test:**
-- Click Test → EC2 sẽ stop
+
+1. Tab "Test" → "Test"
+2. Xem response:
+   ```json
+   {
+     "statusCode": 200,
+     "body": "Successfully started EC2: ['i-0abc123...']"
+   }
+   ```
+3. Kiểm tra EC2 Console → Instance state = "running"
+
+#### **Lambda 2: Stop EC2**
+
+**Làm tương tự:**
+
+```yaml
+Function name: StopWeatherEC2
+Runtime: Python 3.12
+Role: Lambda-EC2-Control-Role
+Code: Copy từ aws/lambda_stop_ec2.py
+Environment: INSTANCE_ID = i-0abc123...
+Timeout: 30 seconds
+```
+
+**Test → EC2 sẽ stop**
 
 ---
 
-## Bước 6: Schedule với EventBridge
+### Bước 2.6: Setup EventBridge Schedule
 
-### 6.1. Schedule START EC2 (8h sáng)
+#### **Schedule 1: Start EC2 mỗi sáng**
 
-1. Vào Lambda function **StartWeatherEC2**
-
-2. **Add trigger** → **EventBridge (CloudWatch Events)**
-
+1. Lambda **StartWeatherEC2** → **Add trigger**
+2. **EventBridge (CloudWatch Events)**
 3. **Create new rule:**
-   ```
-   Rule name: StartWeatherEC2Daily
-   Rule type: Schedule expression
-   Schedule: cron(0 1 * * ? *)
-   ```
-   (1:00 UTC = 8:00 AM Vietnam)
+
+```yaml
+Rule name: StartWeatherEC2Daily
+Rule type: Schedule expression
+Schedule: cron(0 1 * * ? *)
+```
+
+**Giải thích:** `1:00 UTC = 8:00 AM Vietnam time`
 
 4. **Add**
 
-### 6.2. Schedule STOP EC2 (6h chiều)
+#### **Schedule 2: Stop EC2 mỗi tối**
 
-1. Vào Lambda function **StopWeatherEC2**
+1. Lambda **StopWeatherEC2** → **Add trigger**
+2. **Create new rule:**
 
-2. **Add trigger** → **EventBridge**
+```yaml
+Rule name: StopWeatherEC2Daily
+Rule type: Schedule expression
+Schedule: cron(0 11 * * ? *)
+```
 
-3. **Create new rule:**
-   ```
-   Rule name: StopWeatherEC2Daily
-   Rule type: Schedule expression
-   Schedule: cron(0 11 * * ? *)
-   ```
-   (11:00 UTC = 6:00 PM Vietnam)
+**Giải thích:** `11:00 UTC = 6:00 PM Vietnam time`
 
-4. **Add**
+3. **Add**
 
 ---
 
-## Bước 7: Testing End-to-End
+## PHASE 3: Testing
 
-### 7.1. Test thủ công
-
-1. **Start EC2:**
-   - Vào Lambda `StartWeatherEC2` → Click Test
-   - Vào EC2 Console → Kiểm tra instance state = running
-   - Đợi 2-3 phút
-
-2. **Truy cập web:**
-   ```
-   http://[EC2_PUBLIC_IP]
-   ```
-
-3. **Thu thập dữ liệu:**
-   - Click nút "🚀 Bắt đầu thu thập dữ liệu"
-   - Xem progress bar
-   - Đợi ~30-60 giây
-
-4. **Kiểm tra S3:**
-   - Vào S3 bucket
-   - Kiểm tra folder `raw/weather/` có file mới không
-   - Kiểm tra folder `processed/` có file mới không
-
-5. **Stop EC2:**
-   - Vào Lambda `StopWeatherEC2` → Click Test
-   - Kiểm tra EC2 state = stopped
-
-### 7.2. Test tự động (với schedule)
-
-- Đợi đến 8h sáng → EC2 tự start
-- Truy cập web và thu thập dữ liệu
-- Đợi đến 6h chiều → EC2 tự stop
-
----
-
-## Bước 8: Monitoring & Logs
-
-### 8.1. CloudWatch Logs
-
-**Lambda Logs:**
-```
-CloudWatch → Logs → Log groups
-- /aws/lambda/StartWeatherEC2
-- /aws/lambda/StopWeatherEC2
-```
-
-**EC2 Logs:**
-```bash
-ssh -i weather-etl-key.pem ubuntu@[PUBLIC_IP]
-sudo docker logs -f weather-app
-sudo tail -f /var/log/user-data.log
-```
-
-### 8.2. S3 Monitoring
+### Test 1: Manual Start/Stop
 
 ```bash
-# List files
-aws s3 ls s3://weather-data-bucket-YOUR_NAME/raw/weather/
-aws s3 ls s3://weather-data-bucket-YOUR_NAME/processed/
+# Start EC2
+Lambda Console → StartWeatherEC2 → Test
+→ Check EC2 state = running
 
-# Download file
-aws s3 cp s3://weather-data-bucket-YOUR_NAME/raw/weather/weather_raw_20241217.csv .
+# Truy cập web
+http://[EC2_PUBLIC_IP]
+
+# Stop EC2
+Lambda Console → StopWeatherEC2 → Test
+→ Check EC2 state = stopped
 ```
+
+### Test 2: Thu thập dữ liệu
+
+1. **Start EC2** (nếu đang stopped)
+2. Truy cập `http://[EC2_PUBLIC_IP]`
+3. Click **"🚀 Bắt đầu thu thập dữ liệu"**
+4. Đợi ~1 phút
+5. **Kiểm tra S3:**
+
+```bash
+# AWS Console → S3 → Bucket → raw/weather/
+# Sẽ có file: weather_raw_20241219_103045.csv
+
+# S3 → processed/
+# Sẽ có file: weather_processed_20241219_103045.csv
+```
+
+### Test 3: Scheduled Automation
+
+- Đợi đến 8:00 AM → EC2 tự động start
+- Login và chạy thu thập dữ liệu
+- Đợi đến 6:00 PM → EC2 tự động stop
 
 ---
 
-## 🎯 Kiểm tra hoàn thành
+## ✅ Deployment Checklist
 
-- [ ] GitHub repo có code đầy đủ
-- [ ] GitHub Actions pass
-- [ ] S3 bucket đã tạo với folder structure
-- [ ] IAM roles đã tạo
-- [ ] EC2 instance chạy được
-- [ ] Truy cập web qua HTTP OK
-- [ ] Lambda Start/Stop hoạt động
-- [ ] EventBridge schedule đã set
-- [ ] Dữ liệu upload lên S3 thành công
+### GitHub:
+- [ ] Code pushed lên GitHub
+- [ ] GitHub Actions CI pass ✅
+
+### AWS:
+- [ ] S3 bucket created với folders
+- [ ] IAM roles created (EC2 + Lambda)
+- [ ] EC2 instance launched
+- [ ] Web accessible: `http://[IP]`
+- [ ] Lambda Start/Stop created
+- [ ] EventBridge schedules set
+
+### Testing:
+- [ ] Manual start/stop works
+- [ ] Data collection works
+- [ ] S3 có files mới
+- [ ] Scheduled automation set
+
+---
+
+## 🔒 Security Notes
+
+**Files KHÔNG push lên GitHub:**
+- ✅ `.env` (blocked by .gitignore)
+- ✅ `aws/ec2_user_data.sh` (blocked by .gitignore)
+- ✅ `*.pem` key files (blocked by .gitignore)
+
+**API Key chỉ xuất hiện:**
+- ✅ Trong User Data khi launch EC2 (paste 1 lần)
+- ✅ Trong file `.env` trên EC2 (được tạo tự động)
+
+**Không bao giờ:**
+- ❌ Commit API key vào Git
+- ❌ Share key files công khai
+- ❌ Hardcode credentials trong code
 
 ---
 
@@ -427,58 +498,62 @@ aws s3 cp s3://weather-data-bucket-YOUR_NAME/raw/weather/weather_raw_20241217.cs
 |---------|-------|------------|
 | EC2 t2.micro | 10h/day × 30 days | $3.48 |
 | S3 Storage | 1 GB | $0.023 |
-| Lambda | 60 invocations/month | Free |
+| Lambda | 60 invocations | Free |
 | Data Transfer | Minimal | ~$0.10 |
 | **TOTAL** | | **~$3.60/month** |
 
 ---
 
-## 🔧 Troubleshooting
+## 🆘 Troubleshooting
 
-### EC2 không start được
+### EC2 không truy cập được web
+
 ```bash
-# Kiểm tra Lambda logs
-# Kiểm tra IAM role có đủ quyền không
-# Kiểm tra Instance ID đúng chưa
+# 1. Check Security Group port 80
+# 2. SSH vào EC2:
+ssh -i weather-etl-key.pem ubuntu@[IP]
+
+# 3. Check Docker:
+sudo docker ps
+sudo docker logs weather-app
+
+# 4. Check User Data logs:
+sudo tail -f /var/log/user-data.log
 ```
 
-### Không truy cập được web
+### Không upload S3 được
+
 ```bash
-# Kiểm tra Security Group port 80
-# Kiểm tra Docker container: docker ps
-# Kiểm tra logs: docker logs weather-app
+# 1. Check IAM role của EC2
+# 2. Check bucket name trong .env
+# 3. Check logs:
+sudo docker logs weather-app
 ```
 
-### Không upload được S3
-```bash
-# Kiểm tra IAM role của EC2
-# Kiểm tra bucket name trong .env
-# Kiểm tra logs: docker logs weather-app
-```
+### Lambda không start EC2
 
-### API lỗi
 ```bash
-# Kiểm tra API key trong .env
-# Kiểm tra rate limit (500 requests/day)
-# Đợi 24h nếu đã hết quota
+# 1. Check Instance ID đúng chưa
+# 2. Check Lambda role có EC2FullAccess
+# 3. Check CloudWatch Logs:
+CloudWatch → Logs → /aws/lambda/StartWeatherEC2
 ```
 
 ---
 
-## 📚 Resources
+## 📞 Support
 
-- Visual Crossing API: https://www.visualcrossing.com/weather-api
-- AWS EC2: https://aws.amazon.com/ec2/
-- AWS Lambda: https://aws.amazon.com/lambda/
-- AWS S3: https://aws.amazon.com/s3/
+- GitHub Issues: Create issue trong repo
+- Visual Crossing API: https://www.visualcrossing.com/support
+- AWS Documentation: https://docs.aws.amazon.com
 
 ---
 
 ## 🎉 Hoàn thành!
 
-Hệ thống của bạn đã sẵn sàng:
-- ✅ Tự động bật EC2 mỗi sáng
+Hệ thống của bạn đã sẵn sàng tự động:
+- ✅ Start EC2 lúc 8h sáng
 - ✅ Thu thập dữ liệu thời tiết
 - ✅ Upload lên S3
-- ✅ Tự động tắt EC2 mỗi tối
+- ✅ Stop EC2 lúc 6h chiều
 - ✅ Tiết kiệm chi phí tối đa

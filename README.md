@@ -1,235 +1,244 @@
-# 🌤️ Weather Data Collection System
+# 🌤️ Weather Data Collection & ETL System
 
-Hệ thống tự động thu thập dữ liệu thời tiết từ Visual Crossing API và lưu trữ vào AWS S3.
+[![CI Pipeline](https://github.com/YOUR_USERNAME/weather-etl-system/actions/workflows/ci-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/weather-etl-system/actions)
+[![Python 3.9](https://img.shields.io/badge/python-3.9-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Hệ thống tự động thu thập dữ liệu thời tiết từ Visual Crossing API, xử lý và lưu trữ vào AWS S3 với khả năng tự động bật/tắt EC2 để tiết kiệm chi phí.
 
 ## 📋 Tính năng
 
-- ✅ Thu thập dữ liệu thời tiết theo giờ cho 7 ngày gần nhất
-- ✅ Xử lý và làm sạch dữ liệu
-- ✅ Upload tự động lên S3 (raw + processed)
-- ✅ Web UI để giám sát quá trình
-- ✅ EC2 tự động bật/tắt
-- ✅ CI/CD với GitHub Actions
+- ✅ **Thu thập dữ liệu tự động** - Lấy dữ liệu thời tiết theo giờ cho 7 ngày gần nhất
+- ✅ **Xử lý dữ liệu** - Làm sạch, xử lý missing values, tạo features
+- ✅ **Upload tự động lên S3** - Lưu trữ cả raw data và processed data
+- ✅ **Web UI** - Streamlit dashboard để giám sát quá trình
+- ✅ **EC2 tự động bật/tắt** - Lambda + EventBridge tiết kiệm chi phí
+- ✅ **CI/CD** - GitHub Actions tự động test code
 
 ## 🏗️ Kiến trúc hệ thống
 
 ```
-Lambda Start → EC2 khởi động → Docker chạy app
-                ↓
-          Lấy dữ liệu API
-                ↓
-          Xử lý dữ liệu
-                ↓
-          Upload lên S3
-                ↓
-Lambda Stop → EC2 tắt → Tiết kiệm chi phí
+┌─────────────────┐
+│  GitHub Repo    │
+│  (Code + CI/CD) │
+└────────┬────────┘
+         │
+         ↓
+┌─────────────────────────────────────────┐
+│         AWS Infrastructure              │
+│                                         │
+│  ┌──────────┐      ┌──────────┐       │
+│  │ Lambda   │──────│   EC2    │       │
+│  │  Start   │      │  Ubuntu  │       │
+│  └──────────┘      │  Docker  │       │
+│                    └────┬─────┘       │
+│  ┌──────────┐          │             │
+│  │ Lambda   │          ↓             │
+│  │  Stop    │      ┌──────────┐     │
+│  └──────────┘      │    S3    │     │
+│                    │  Bucket  │     │
+│  ┌──────────┐      └──────────┘     │
+│  │EventBridge                       │
+│  │ Schedule │                       │
+│  └──────────┘                       │
+└─────────────────────────────────────────┘
 ```
 
-## 📁 Cấu trúc S3 Bucket
+## 🚀 Quick Start
+
+### Bước 1: Clone Repository
+
+```bash
+git clone https://github.com/YOUR_USERNAME/weather-etl-system.git
+cd weather-etl-system
+```
+
+### Bước 2: Cài đặt Dependencies (Local testing)
+
+```bash
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Bước 3: Tạo file `.env`
+
+```bash
+cp .env.example .env
+# Sửa .env với API key và config thật
+```
+
+### Bước 4: Run Tests
+
+```bash
+pytest test_app.py -v
+```
+
+### Bước 5: Deploy lên AWS
+
+Xem hướng dẫn chi tiết trong **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**
+
+## 📁 Cấu trúc Project
+
+```
+weather-etl-system/
+├── .github/
+│   └── workflows/
+│       └── ci-test.yml          # GitHub Actions CI/CD
+│
+├── aws/
+│   ├── ec2_user_data.template.sh   # EC2 User Data template
+│   ├── lambda_start_ec2.py         # Lambda start function
+│   └── lambda_stop_ec2.py          # Lambda stop function
+│
+├── app.py                       # Main Streamlit application
+├── requirements.txt             # Python dependencies
+├── Dockerfile                   # Docker configuration
+├── test_app.py                  # Unit tests
+│
+├── .gitignore                   # Git ignore (bảo mật)
+├── .env.example                 # Environment variables template
+│
+├── README.md                    # This file
+└── DEPLOYMENT_GUIDE.md          # Hướng dẫn deploy chi tiết
+```
+
+## 📊 Cấu trúc S3 Bucket
 
 ```
 weather-data-bucket/
 ├── raw/
 │   └── weather/
-│       └── weather_raw_20241217_103000.csv
+│       └── weather_raw_20241219_103045.csv
 ├── processed/
-│   └── weather_processed_20241217_103000.csv
+│   └── weather_processed_20241219_103045.csv
 ├── models/
-│   └── (future ML models)
-└── electricity/
-    └── (future electricity data)
+│   └── (ML models - tương lai)
+└── raw/electricity/
+    └── (electricity data - tương lai)
 ```
 
-## 🚀 Deployment
+## 🔑 Environment Variables
 
-### Bước 1: Tạo S3 Bucket
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `WEATHER_API_KEY` | Visual Crossing API key | `pk.abc123xyz456...` |
+| `S3_BUCKET_NAME` | AWS S3 bucket name | `weather-data-bucket-john` |
+| `AWS_REGION` | AWS region | `ap-southeast-1` |
 
-```bash
-# Tạo bucket
-aws s3 mb s3://weather-data-bucket --region ap-southeast-1
-
-# Tạo folder structure
-aws s3api put-object --bucket weather-data-bucket --key raw/weather/
-aws s3api put-object --bucket weather-data-bucket --key raw/electricity/
-aws s3api put-object --bucket weather-data-bucket --key processed/
-aws s3api put-object --bucket weather-data-bucket --key models/
-```
-
-### Bước 2: Tạo IAM Role cho EC2
-
-**Policies cần thiết:**
-- `AmazonS3FullAccess` - Upload/Download S3
-- `CloudWatchAgentServerPolicy` - Logs
-
-### Bước 3: Launch EC2 với User Data
-
-**Instance configuration:**
-- AMI: Ubuntu Server 22.04 LTS
-- Instance type: t2.micro hoặc t3.small
-- Security Group: Port 80 (HTTP)
-- IAM Role: EC2-S3-Role
-
-**User Data Script:**
-
-```bash
-#!/bin/bash
-exec > >(tee /var/log/user-data.log)
-exec 2>&1
-
-echo "=== Starting deployment at $(date) ==="
-
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-systemctl start docker
-systemctl enable docker
-
-# Install Git and AWS CLI
-apt update
-apt install -y git awscli
-
-# Clone repository
-cd /home/ubuntu
-sudo -u ubuntu git clone https://github.com/YOUR_USERNAME/weather-etl-system.git app
-cd app
-
-# Create .env file
-cat > .env << EOF
-WEATHER_API_KEY=${WEATHER_API_KEY}
-S3_BUCKET_NAME=weather-data-bucket
-AWS_REGION=ap-southeast-1
-EOF
-
-# Build and run Docker
-docker build -t weather-app .
-docker run -d -p 80:8501 \
-  --env-file .env \
-  --name weather-app \
-  weather-app
-
-echo "=== Deployment completed at $(date) ==="
-docker ps
-```
-
-### Bước 4: Tạo Lambda Functions
-
-**Lambda Start EC2:**
-```python
-import boto3
-
-ec2 = boto3.client('ec2')
-
-def lambda_handler(event, context):
-    instance_id = 'i-xxxxx'  # Thay bằng EC2 Instance ID
-    ec2.start_instances(InstanceIds=[instance_id])
-    return {'statusCode': 200, 'body': 'EC2 Started'}
-```
-
-**Lambda Stop EC2:**
-```python
-import boto3
-
-ec2 = boto3.client('ec2')
-
-def lambda_handler(event, context):
-    instance_id = 'i-xxxxx'
-    ec2.stop_instances(InstanceIds=[instance_id])
-    return {'statusCode': 200, 'body': 'EC2 Stopped'}
-```
-
-### Bước 5: Schedule với EventBridge
-
-**Start EC2 (8h sáng mỗi ngày):**
-```
-cron(0 1 * * ? *)
-```
-
-**Stop EC2 (6h chiều mỗi ngày):**
-```
-cron(0 11 * * ? *)
-```
+**Lấy API key miễn phí:** https://www.visualcrossing.com/weather-api
 
 ## 🧪 Testing
 
-```bash
-# Local testing
-pip install -r requirements.txt
-pytest test_app.py -v
+### Run unit tests
 
-# Docker testing
+```bash
+pytest test_app.py -v
+```
+
+### Test Docker build
+
+```bash
 docker build -t weather-app .
 docker run -p 8501:8501 --env-file .env weather-app
 ```
 
-## 📊 Monitoring
+### Access local app
 
-**Truy cập Web UI:**
 ```
-http://[EC2_PUBLIC_IP]
+http://localhost:8501
 ```
 
-**Xem logs:**
+## 📈 Monitoring
+
+### View EC2 logs
+
 ```bash
-# EC2 logs
-ssh ubuntu@[EC2_IP]
+ssh -i weather-etl-key.pem ubuntu@[EC2_IP]
 sudo docker logs -f weather-app
+```
 
-# CloudWatch logs
-aws logs tail /aws/lambda/StartEC2 --follow
+### View Lambda logs
+
+```bash
+# AWS Console → CloudWatch → Logs
+/aws/lambda/StartWeatherEC2
+/aws/lambda/StopWeatherEC2
+```
+
+### Check S3 data
+
+```bash
+aws s3 ls s3://weather-data-bucket-YOUR_NAME/raw/weather/
+aws s3 ls s3://weather-data-bucket-YOUR_NAME/processed/
 ```
 
 ## 🔒 Security
 
 - ✅ API keys trong environment variables (không commit)
-- ✅ IAM roles thay vì hardcode credentials
-- ✅ S3 bucket private, chỉ EC2 truy cập được
-- ✅ Security Group chỉ mở port cần thiết
+- ✅ IAM roles thay vì hardcode AWS credentials
+- ✅ S3 bucket private access only
+- ✅ Security Group restricted ports
+- ✅ `.gitignore` block sensitive files
 
-## 💰 Chi phí ước tính
+**Files KHÔNG được push lên GitHub:**
+- `.env` (API keys)
+- `aws/ec2_user_data.sh` (với credentials thật)
+- `*.pem` (SSH keys)
 
-- EC2 t2.micro: $0.0116/hour × 10 hours/day = $3.5/month
-- Lambda: Free tier (1M requests/month)
-- S3: $0.023/GB/month (ước tính 1GB) = $0.023/month
+## 💰 Chi phí
 
-**Tổng: ~$3.5/month**
+| Service | Usage | Cost/month |
+|---------|-------|------------|
+| EC2 t2.micro | 10 hours/day | $3.48 |
+| S3 Storage | ~1 GB | $0.023 |
+| Lambda | 60 invocations | Free tier |
+| Data Transfer | Minimal | ~$0.10 |
+| **TOTAL** | | **~$3.60/month** |
 
-## 📝 Environment Variables
+## 📅 Schedule
 
-```bash
-WEATHER_API_KEY=xxx          # Visual Crossing API key
-S3_BUCKET_NAME=xxx           # S3 bucket name
-AWS_REGION=ap-southeast-1    # AWS region
-```
+- **8:00 AM (Vietnam):** EC2 tự động start
+- **6:00 PM (Vietnam):** EC2 tự động stop
+- **Runtime:** ~10 hours/day = Tiết kiệm 58% chi phí!
 
-## 🛠️ Troubleshooting
+## 🛠️ Tech Stack
 
-**Lỗi API:**
-- Kiểm tra API key
-- Kiểm tra rate limit (500 requests/day free tier)
+- **Backend:** Python 3.9, Streamlit
+- **Data Processing:** Pandas, Requests
+- **Infrastructure:** AWS EC2, S3, Lambda, EventBridge
+- **Containerization:** Docker
+- **CI/CD:** GitHub Actions
+- **API:** Visual Crossing Weather API
 
-**Lỗi S3:**
-- Kiểm tra IAM role của EC2
-- Kiểm tra bucket name và region
+## 📚 Documentation
 
-**Lỗi Docker:**
-- Xem logs: `docker logs weather-app`
-- Restart: `docker restart weather-app`
-
-## 📚 API Documentation
-
-Visual Crossing Weather API:
-- Docs: https://www.visualcrossing.com/resources/documentation/weather-api/
-- Free tier: 500 requests/day
-- Data: Hourly weather data with 5+ years history
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Hướng dẫn deploy chi tiết
+- [API Documentation](https://www.visualcrossing.com/resources/documentation/weather-api/) - Visual Crossing API
 
 ## 🤝 Contributing
 
 1. Fork repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Create Pull Request
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
 
-## 📄 License
+## 📝 License
 
-MIT License
+This project is licensed under the MIT License.
+
+## 👨‍💻 Author
+
+**Your Name**
+- GitHub: [@YOUR_USERNAME](https://github.com/YOUR_USERNAME)
+
+## 🙏 Acknowledgments
+
+- Visual Crossing Weather API for free weather data
+- AWS for cloud infrastructure
+- Streamlit for amazing web framework
+
+---
+
+⭐ **Star this repo nếu bạn thấy hữu ích!**

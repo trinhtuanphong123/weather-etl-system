@@ -16,7 +16,7 @@ ELEMENTS = "datetime,temp,humidity,precip,windspeed,cloudcover"
 
 # AWS S3
 S3_BUCKET = os.environ.get('S3_BUCKET_NAME', 'weather-data-bucket')
-AWS_REGION = os.environ.get('AWS_REGION', 'ap-southeast-1')
+AWS_REGION = os.environ.get('AWS_REGION', 'ap-southeast-2')
 
 def get_daily_weather_data(api_key, query_date):
     """
